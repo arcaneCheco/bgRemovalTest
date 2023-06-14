@@ -1,13 +1,7 @@
 import * as THREE from 'three';
-// import '@tensorflow/tfjs-backend-webgl';
-// import * as mpPose from '@mediapipe/pose';
-// import * as mpSelfieSegmentation from '@mediapipe/selfie_segmentation';
-// import * as tfjsWasm from '@tensorflow/tfjs-backend-wasm';
-// import * as tf from '@tensorflow/tfjs-core';
-// import * as bodySegmentation from '@tensorflow-models/body-segmentation';
-// import '@tensorflow/tfjs-backend-core';
-// import '@tensorflow/tfjs-backend-webgl';
 import * as bodySegmentation from '@tensorflow-models/body-segmentation';
+import { Pane } from 'tweakpane';
+import { createFFmpeg, fetchFile } from "@ffmpeg/ffmpeg";
 
 export function fit(type, outer, inner) {
     let outerAspect = outer.width / outer.height;
@@ -38,14 +32,18 @@ class Experience {
     segmenter: bodySegmentation.BodySegmenter;
     shouldDrawMask: boolean;
     cameraMaterial: THREE.ShaderMaterial;
+    pane: Pane;
     constructor() {
 
         this.render = this.render.bind(this);
         this.startStream = this.startStream.bind(this)
         this.setupBodySegmentation = this.setupBodySegmentation.bind(this)
         this.setMaskTexture = this.setMaskTexture.bind(this)
+        this.useRecordScreen = this.useRecordScreen.bind(this)
 
         this.shouldDrawMask = false;
+
+        this.pane = new Pane();
 
         this.streamElement = document.querySelector('#streamElement')!;
         this.canvasElement = document.querySelector('#bodySegementation')!;
@@ -56,6 +54,7 @@ class Experience {
             this.init();
             this.onResize();
             this.render();
+            this.useRecordScreen();
 
             setTimeout(() => {
                 this.onResize();
@@ -63,6 +62,66 @@ class Experience {
         })
 
 
+    }
+
+    useRecordScreen() {
+        const debug = this.pane.addFolder({ title: 'Screen Recording' })
+
+        debug.addButton({ title: 'Start recording' }).on('click', () => {
+            startRecording();
+        })
+
+        const ffmpeg = createFFmpeg({
+            corePath: "https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js",
+            log: true,
+        });
+
+        const downloadVideo = async (blob) => {
+            var url = URL.createObjectURL(blob);
+            console.log(url);
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = "test.webm";
+            a.className = "button";
+            a.innerText = "click here to download";
+            a.click();
+        };
+
+        const exportVid = async (blob: Blob) => {
+            if (!ffmpeg.isLoaded()) {
+                await ffmpeg.load();
+                ffmpeg.FS("writeFile", "test.avi", await fetchFile(blob));
+                await ffmpeg.run("-i", "test.avi", "test.mp4");
+                const data = ffmpeg.FS("readFile", "test.mp4");
+
+
+                const url = URL.createObjectURL(
+                    new Blob([data.buffer], { type: "video/mp4" })
+                );
+
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "recording.mp4";
+                a.click();
+            }
+        };
+
+        const startRecording = () => {
+            const canvas = this.renderer.domElement;
+            const chunks: Array<BlobPart> = []; // here we will store our recorded media chunks (Blobs)
+            const stream = canvas.captureStream(30); // grab our canvas MediaStream
+            const rec = new MediaRecorder(stream); // init the recorder
+            // every time the recorder has new data, we will store it in our array
+            rec.ondataavailable = (e) => chunks.push(e.data);
+            // only when the recorder stops, we construct a complete Blob from all the chunks
+            rec.onstop = (e) =>
+                exportVid(new Blob(chunks, { type: "video/webm;codecs=h264" }));
+            // downloadVideo(new Blob(chunks, { type: "video/webm;codecs=h264" }));
+            rec.start();
+            setTimeout(() => {
+                rec.stop();
+            }, 2000); // stop recording in 6s
+        };
     }
 
     init() {
@@ -102,12 +161,13 @@ class Experience {
                 void main() {
                     vec4 img = texture2D(uMap, vUv);
                     gl_FragColor = img;
+
                     vec2 maskUv = vUv;
-                    // maskUv.x *= -1.;
                     maskUv.y = 1. - vUv.y;
                     float mask = texture2D(uMask, maskUv).r;
-                    gl_FragColor.a = mask;
-                    // gl_FragColor *= mask.r;
+
+                    // gl_FragColor.a = mask;
+                    gl_FragColor.rgb *= mask;
                 }
             `,
             vertexShader: `
@@ -123,17 +183,8 @@ class Experience {
         this.scene.add(cameraMesh);
     }
 
-    // createFlippedBitmap(Bitmap source, boolean xFlip, boolean yFlip) {
-    //     Matrix matrix = new Matrix();
-    //     matrix.postScale(xFlip ? -1 : 1, yFlip ? -1 : 1, source.getWidth() / 2f, source.getHeight() / 2f);
-    //     return Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(), matrix, true);
-    // }
-
     setMaskTexture(bitmap: ImageBitmap) {
         const texture = new THREE.CanvasTexture(bitmap);
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.repeat.x = - 1;
-        // texture.flipY = true;
         this.cameraMaterial.uniforms.uMask.value = texture;
     }
 
@@ -152,24 +203,20 @@ class Experience {
 
         const image = this.streamElement;
         const [result] = await this.segmenter.segmentPeople(image);
-        // segmentation = await segmenter.segmentPeople(camera.video, {
+        // const segmentationConfig =  {
         //     flipHorizontal: false,
         //     multiSegmentation: false,
         //     segmentBodyParts: true,
         //     segmentationThreshold: STATE.visualization.foregroundThreshold
-        //   });
+        //   }
+        // segmentation = await segmenter.segmentPeople(camera.video, segmentationConfig);
         const btmap = await result.mask.toCanvasImageSource();
-        // console.log({ btmap })
 
         this.setMaskTexture(btmap);
-        // console.log({ result })
-        // console.log({ mask: btmap })
+
         const ctx = this.canvasElement.getContext('2d');
         ctx?.clearRect(0, 0, this.streamElement.offsetWidth, this.streamElement.offsetHeight)
         ctx?.drawImage(btmap, 0, 0, this.streamElement.offsetWidth, this.streamElement.offsetHeight)
-
-        // const gl = window.exposedContext;
-        // console.log({ gl })
     }
 
     onResize() {
@@ -192,10 +239,12 @@ class Experience {
         this.shouldDrawMask = true;
     }
 
-    render() {
+    addBgSource() { }
+
+    async render() {
         this.renderer.render(this.scene, this.camera);
         if (this.shouldDrawMask) {
-            this.drawMask();
+            await this.drawMask();
         }
         window.requestAnimationFrame(this.render)
     }
