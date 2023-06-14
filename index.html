@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="./styles.css">
+    <title> Document</title>
+</head>
+
+<body>
+    <div id="app">
+        <div id="three"></div>
+        <div class="buttons">
+            <button id="startStream">START STREAM</button>
+        </div>
+        <div id="sources">
+            <p>SOURCES: </p>
+            <video muted playsinline autoplay id="streamElement"></video>
+            <canvas id="bodySegementation" />
+        </div>
+    </div>
+    <script type="module" src="./app.ts"></script>
+</body>
+
+</html>

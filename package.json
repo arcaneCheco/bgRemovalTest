@@ -1,0 +1,21 @@
+{
+  "name": "webarportal",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@tensorflow-models/body-segmentation": "^1.0.1",
+    "parcel": "^2.9.2",
+    "three": "^0.153.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.152.1",
+    "buffer": "^6.0.3",
+    "process": "^0.11.10"
+  }
+}

@@ -1,0 +1,63 @@
+body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+#app {
+    height: 100%;
+    width: 100%;
+    position: absolute;
+}
+
+#three {
+    position: absolute;
+    left: 50%;
+    bottom: 45%;
+    transform: translateX(-50%);
+    /* display: flex;
+    align-items: center;
+    justify-content: center; */
+    /* border: 3px solid black; */
+    height: 50%;
+    width: 30%;
+}
+
+#three canvas {
+    display: block;
+    width: 100%;
+    border: 3px solid black;
+    height: 100%;
+}
+
+#sources {
+    position: absolute;
+    height: 30%;
+    width: 100%;
+    bottom: 0;
+    display: flex;
+    background: grey;
+}
+
+.buttons {
+    position: absolute;
+    bottom: 30%;
+    height: 15%;
+    width: 100%;
+    border: 2px solid red;
+}
+
+#streamElement {
+    border: 2px solid green;
+    z-index: 1;
+    transform: scale(-1, 1)
+}
+
+#bodySegementation {
+    border: 2px solid yellow;
+    z-index: 1;
+    transform: scale(-1, 1);
+}
