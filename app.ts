@@ -33,6 +33,7 @@ class Experience {
     shouldDrawMask: boolean;
     cameraMaterial: THREE.ShaderMaterial;
     pane: Pane;
+    foregroundThreshold: number;
     constructor() {
 
         this.render = this.render.bind(this);
@@ -40,6 +41,7 @@ class Experience {
         this.setupBodySegmentation = this.setupBodySegmentation.bind(this)
         this.setMaskTexture = this.setMaskTexture.bind(this)
         this.useRecordScreen = this.useRecordScreen.bind(this)
+        this.addBgSrc = this.addBgSrc.bind(this)
 
         this.shouldDrawMask = false;
 
@@ -55,13 +57,31 @@ class Experience {
             this.onResize();
             this.render();
             this.useRecordScreen();
+            this.addBgSrc()
 
             setTimeout(() => {
                 this.onResize();
             }, 500)
         })
+    }
 
+    addBgSrc() {
+        const debug = this.pane.addFolder({ title: 'Background' })
 
+        debug.addButton({ title: 'add background' }).on('click', () => {
+            const video = document.createElement('video');
+            video.classList.add('src')
+            video.src = 'assets/bg.mp4';
+            video.autoplay = true;
+            video.playsInline = true;
+            video.muted = true;
+            video.loop = true;
+            const sources = document.getElementById('sources');
+            sources?.appendChild(video);
+
+            const texture = new THREE.VideoTexture(video);
+            this.cameraMaterial.uniforms.uBg.value = texture;
+        })
     }
 
     useRecordScreen() {
@@ -115,12 +135,12 @@ class Experience {
             rec.ondataavailable = (e) => chunks.push(e.data);
             // only when the recorder stops, we construct a complete Blob from all the chunks
             rec.onstop = (e) =>
-                exportVid(new Blob(chunks, { type: "video/webm;codecs=h264" }));
-            // downloadVideo(new Blob(chunks, { type: "video/webm;codecs=h264" }));
+                // exportVid(new Blob(chunks, { type: "video/webm;codecs=h264" }));
+                downloadVideo(new Blob(chunks, { type: "video/webm;codecs=h264" }));
             rec.start();
             setTimeout(() => {
                 rec.stop();
-            }, 2000); // stop recording in 6s
+            }, 5000); // stop recording in 6s
         };
     }
 
@@ -152,22 +172,79 @@ class Experience {
         this.cameraMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 uMap: { value: videoTexture },
-                uMask: { value: null }
+                uMask: { value: null },
+                uBg: { value: null },
+                uResolution: { value: new THREE.Vector2(600, 670) },
+                useBlur: { value: 1 },
+                useBinaryMask: { value: 0 }
             },
             fragmentShader: `
+                vec4 blur5(sampler2D image, vec2 uv, vec2 resolution, vec2 direction) {
+                    vec4 color = vec4(0.0);
+                    vec2 off1 = vec2(1.3333333333333333) * direction;
+                    color += texture2D(image, uv) * 0.29411764705882354;
+                    color += texture2D(image, uv + (off1 / resolution)) * 0.35294117647058826;
+                    color += texture2D(image, uv - (off1 / resolution)) * 0.35294117647058826;
+                    return color; 
+                }
+                vec4 blur9(sampler2D image, vec2 uv, vec2 resolution, vec2 direction) {
+                    vec4 color = vec4(0.0);
+                    vec2 off1 = vec2(1.3846153846) * direction;
+                    vec2 off2 = vec2(3.2307692308) * direction;
+                    color += texture2D(image, uv) * 0.2270270270;
+                    color += texture2D(image, uv + (off1 / resolution)) * 0.3162162162;
+                    color += texture2D(image, uv - (off1 / resolution)) * 0.3162162162;
+                    color += texture2D(image, uv + (off2 / resolution)) * 0.0702702703;
+                    color += texture2D(image, uv - (off2 / resolution)) * 0.0702702703;
+                    return color;
+                }
+                vec4 blur13(sampler2D image, vec2 uv, vec2 resolution, vec2 direction) {
+                    vec4 color = vec4(0.0);
+                    vec2 off1 = vec2(1.411764705882353) * direction;
+                    vec2 off2 = vec2(3.2941176470588234) * direction;
+                    vec2 off3 = vec2(5.176470588235294) * direction;
+                    color += texture2D(image, uv) * 0.1964825501511404;
+                    color += texture2D(image, uv + (off1 / resolution)) * 0.2969069646728344;
+                    color += texture2D(image, uv - (off1 / resolution)) * 0.2969069646728344;
+                    color += texture2D(image, uv + (off2 / resolution)) * 0.09447039785044732;
+                    color += texture2D(image, uv - (off2 / resolution)) * 0.09447039785044732;
+                    color += texture2D(image, uv + (off3 / resolution)) * 0.010381362401148057;
+                    color += texture2D(image, uv - (off3 / resolution)) * 0.010381362401148057;
+                    return color;
+                  }
+
                 uniform sampler2D uMap;
                 uniform sampler2D uMask;
+                uniform sampler2D uBg;
+                uniform vec2 uResolution;
+                uniform int useBlur;
+                uniform int useBinaryMask;
                 varying vec2 vUv;
                 void main() {
-                    vec4 img = texture2D(uMap, vUv);
-                    gl_FragColor = img;
+                    vec3 col = vec3(0.);
+                    vec3 bg = texture2D(uBg, vUv).xyz;
+
+                    vec3 stream = texture2D(uMap, vUv).xyz;
 
                     vec2 maskUv = vUv;
-                    maskUv.y = 1. - vUv.y;
+                    if (useBinaryMask == 0) {
+                        maskUv.y = 1. - vUv.y;
+                    }
                     float mask = texture2D(uMask, maskUv).r;
 
+
+                    vec4 blurOutput =  blur13(uMask, maskUv, uResolution, vec2(0., 1.));
+                    col = blurOutput.xyz;
+                    col = mix(bg, stream, blurOutput.r);
+                    
+                    if (useBlur < 0) {
+                        col = mix(bg, stream, mask);
+                    }
+                    
                     // gl_FragColor.a = mask;
-                    gl_FragColor.rgb *= mask;
+                    // gl_FragColor.rgb *= mask;
+
+                    gl_FragColor = vec4(col, 1.);
                 }
             `,
             vertexShader: `
@@ -181,6 +258,11 @@ class Experience {
         const cameraMesh = new THREE.Mesh(cameraGeo, this.cameraMaterial);
         cameraMesh.scale.x = -1;
         this.scene.add(cameraMesh);
+
+
+        this.pane.addButton({ title: 'toggle blur' }).on('click', () => {
+            this.cameraMaterial.uniforms.useBlur.value *= -1;
+        })
     }
 
     setMaskTexture(bitmap: ImageBitmap) {
@@ -191,38 +273,78 @@ class Experience {
     async setupBodySegmentation() {
         const model = bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation;
         const segmenterConfig = {
+            // runtime: 'tfjs', // or 'tfjs'
             runtime: 'mediapipe', // or 'tfjs'
             // solutionPath: '/Users/sergio/Desktop/repositories/webARPortal/node_modules/@mediapipe/selfie_segmentation',
             solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
+            // modelType: 'landscape'
             modelType: 'general'
         }
         this.segmenter = await bodySegmentation.createSegmenter(model, segmenterConfig);
+
+        this.foregroundThreshold = 0.6;
+        const debug = this.pane.addFolder({ title: 'bgRemovalModel' });
+        debug.addInput(this, 'foregroundThreshold', {
+            min: 0,
+            max: 1
+        })
+
+        this.useBinaryMask = false;
+        debug.addInput(this, 'useBinaryMask').on('change', () => {
+            this.cameraMaterial.uniforms.useBinaryMask.value = this.useBinaryMask;
+        })
     }
 
     async drawMask() {
 
         const image = this.streamElement;
-        const [result] = await this.segmenter.segmentPeople(image);
-        // const segmentationConfig =  {
-        //     flipHorizontal: false,
-        //     multiSegmentation: false,
-        //     segmentBodyParts: true,
-        //     segmentationThreshold: STATE.visualization.foregroundThreshold
-        //   }
-        // segmentation = await segmenter.segmentPeople(camera.video, segmentationConfig);
-        const btmap = await result.mask.toCanvasImageSource();
+        const people = await this.segmenter.segmentPeople(image);
 
-        this.setMaskTexture(btmap);
+        if (!this.useBinaryMask) {
+            const btmap = await people[0].mask.toCanvasImageSource();
+            this.setMaskTexture(btmap);
 
-        const ctx = this.canvasElement.getContext('2d');
-        ctx?.clearRect(0, 0, this.streamElement.offsetWidth, this.streamElement.offsetHeight)
-        ctx?.drawImage(btmap, 0, 0, this.streamElement.offsetWidth, this.streamElement.offsetHeight)
+            const ctx = this.canvasElement.getContext('2d');
+            const width = this.streamElement.offsetWidth;
+            const height = this.streamElement.offsetHeight;
+            this.canvasElement.setAttribute('width', String(width))
+            this.canvasElement.setAttribute('height', String(height))
+            ctx?.clearRect(0, 0, width, height)
+            ctx?.drawImage(btmap, 0, 0, width, height)
+        }
+
+        else {
+            const foregroundColor = { r: 255, g: 0, b: 0, a: 255 };
+            const backgroundColor = { r: 0, g: 0, b: 0, a: 0 };
+            const drawContour = false;
+
+            const backgroundDarkeningMask = await bodySegmentation.toBinaryMask(people, foregroundColor, backgroundColor, drawContour, this.foregroundThreshold);
+
+            const texture = new THREE.Texture(backgroundDarkeningMask);
+            texture.needsUpdate = true;
+            this.cameraMaterial.uniforms.uMask.value = texture
+
+            const ctx = this.canvasElement.getContext('2d');
+            const width = this.streamElement.offsetWidth;
+            const height = this.streamElement.offsetHeight;
+            this.canvasElement.setAttribute('width', String(width))
+            this.canvasElement.setAttribute('height', String(height))
+
+            ctx.putImageData(backgroundDarkeningMask, 0, 0)
+        }
+        // const opacity = 0.7;
+        // const maskBlurAmount = 3; // Number of pixels to blur by.
+        // const people2 = await bodySegmentation.drawMask(this.canvasElement, this.streamElement, backgroundDarkeningMask, opacity, maskBlurAmount);
     }
 
     onResize() {
         this.width = this.container.offsetWidth;
         this.height = this.container.offsetHeight;
         this.renderer.setSize(this.width, this.height);
+        if (this.cameraMaterial) {
+            this.cameraMaterial.uniforms.uResolution.value.x = this.width
+            this.cameraMaterial.uniforms.uResolution.value.y = this.height
+        }
     }
 
     async startStream() {
@@ -233,6 +355,7 @@ class Experience {
         await new Promise(resolve => {
             this.streamElement.onloadedmetadata = resolve;
         });
+        // this.canvasElement.style.width = this.streamElement.offsetWidth + 'px'
 
         this.addObj();
 

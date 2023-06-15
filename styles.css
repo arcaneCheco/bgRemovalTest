@@ -40,6 +40,12 @@ body {
     bottom: 0;
     display: flex;
     background: grey;
+    overflow-x: scroll;
+}
+
+.src {
+    height: 100%;
+    /* width: 40vh; */
 }
 
 .buttons {

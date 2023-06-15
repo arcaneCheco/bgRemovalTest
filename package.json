@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "build": "npx parcel build ./index.html",
-    "dev": "npx parcel ./index.html --no-cache"
+    "build": "npx parcel build ./index.html && cp -r ./assets ./dist/",
+    "dev": "cp -r ./assets ./dist/ && npx parcel --no-cache ./index.html"
   },
   "author": "",
   "license": "ISC",
@@ -12,6 +12,8 @@
     "@ffmpeg/core": "^0.11.0",
     "@ffmpeg/ffmpeg": "^0.11.6",
     "@tensorflow-models/body-segmentation": "^1.0.1",
+    "glsl-fast-gaussian-blur": "^1.0.2",
+    "glslify": "^7.1.1",
     "parcel": "^2.9.2",
     "three": "^0.153.0",
     "tweakpane": "^3.1.9",
